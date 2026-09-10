@@ -14,26 +14,10 @@ concurrency:
 
 jobs:
   build:
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      - name: Restore uploaded project folders (one-time migration)
-        if: ${{ hashFiles('src/main.tsx') == '' }}
-        run: |
-          set -eu
-          mkdir -p src/pages src/test public scripts
-          git mv App.tsx components.tsx config.ts context.tsx db.ts main.tsx model.ts pwa.tsx styles.css src/
-          git mv More.tsx Notes.tsx TaskForm.tsx Today.tsx Week.tsx src/pages/
-          git mv core.test.ts form.test.tsx setup.ts src/test/
-          git mv icon-192.png icon-512.png maskable-512.png public/
-          git mv check-pages.mjs run.mjs scripts/
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Restore source, test, script and icon folders'
-          git push origin HEAD:main
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
