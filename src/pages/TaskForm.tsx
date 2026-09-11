@@ -7,21 +7,25 @@ import {
 } from "react-router-dom";
 import { ArrowLeft, Check, Star } from "lucide-react";
 import { useData } from "../context";
-import { saveTask } from "../db";
+import { saveRepeatingTask } from "../db";
 import {
   localDate,
+  formatDate, repeatEnd,
   postpone,
   priorities,
   statuses,
   topThreeConflicts,
   validateTask,
   type Task,
+  type RepeatOptions,
 } from "../model";
 export function TaskForm() {
   const { id } = useParams();
-  const { tasks, categories, notify } = useData();
+  const { tasks, categories, series = [], notify } = useData();
   const [search] = useSearchParams();
   const existing = tasks.find((t) => t.id === id);
+  const existingSeries = series.find(s => s.id === existing?.seriesId);
+  const [repeat, setRepeat] = useState<RepeatOptions | undefined>(existingSeries?.enabled ? existingSeries.options : undefined);
   const now = new Date().toISOString();
   const [task, setTask] = useState<Task>(() =>
     existing
@@ -56,6 +60,7 @@ export function TaskForm() {
     setReplacement("");
   }
   const conflicts = topThreeConflicts(task, tasks);
+  const repeatStart = existingSeries?.startDate || task.date || localDate();
   async function submit(e: FormEvent) {
     e.preventDefault();
     const invalid = validateTask(task, categories);
@@ -71,7 +76,7 @@ export function TaskForm() {
     }
     setSaving(true);
     try {
-      await saveTask(
+      await saveRepeatingTask(
         {
           ...task,
           updatedAt: new Date().toISOString(),
@@ -80,6 +85,7 @@ export function TaskForm() {
               ? (task.completedAt ?? new Date().toISOString())
               : undefined,
         },
+        repeat,
         replacement,
       );
       notify("Առաջադրանքը պահպանված է։");
@@ -192,6 +198,33 @@ export function TaskForm() {
               </select>
             </label>
           </div>
+        </section>
+        <section className="form-card">
+          <h2>Կրկնություն</h2>
+          <label>Կրկնել
+            <select value={repeat?.mode ?? "off"} onChange={e => {
+              const mode = e.target.value;
+              setRepeat(mode === "off" ? undefined : mode === "forever" ? { mode } : mode === "until" ? { mode, until: task.date } : { mode: mode as "weeks" | "months", count: mode === "weeks" ? 2 : 3 });
+            }}>
+              <option value="off">Չկրկնել / անջատել</option>
+              <option value="weeks">Ամեն շաբաթ՝ որոշակի շաբաթների քանակով</option>
+              <option value="months">Ամեն շաբաթ՝ որոշակի ամիսների ընթացքում</option>
+              <option value="until">Ամեն շաբաթ՝ մինչև ընտրված օրը</option>
+              <option value="forever">Ամեն շաբաթ՝ մինչև անջատելը</option>
+            </select>
+          </label>
+          {repeat && <p className="muted">Ամեն {formatDate(repeatStart, { weekday: "long" })}։ Սկիզբը՝ {formatDate(repeatStart, { day: "numeric", month: "long", year: "numeric" })}։</p>}
+          {(repeat?.mode === "weeks" || repeat?.mode === "months") && <label>
+            {repeat.mode === "weeks" ? "Շաբաթների քանակը" : "Ամիսների քանակը"}
+            <input type="number" min="1" max={repeat.mode === "weeks" ? 520 : 120} value={repeat.count || ""} onChange={e => setRepeat({ ...repeat, count: Number(e.target.value) })} />
+          </label>}
+          {repeat?.mode === "until" && <label>Կրկնության վերջին օրը
+            <input type="date" min={existingSeries?.startDate ?? task.date} value={repeat.until} onChange={e => setRepeat({ ...repeat, until: e.target.value })} />
+          </label>}
+          {repeat?.mode === "weeks" && <p className="muted">Առաջին օրը ներառված է քանակի մեջ․ 2 շաբաթը նշանակում է երկու առաջադրանք։</p>}
+          {repeat && repeat.mode !== "forever" && ("count" in repeat ? repeat.count > 0 && repeat.count <= 520 : !!repeat.until) && <p className="muted">Մինչև՝ {repeatEnd(repeatStart, repeat)} (ներառյալ)։</p>}
+          {existingSeries && <p className="muted">Կրկնության կարգավորումները վերաբերում են ամբողջ շարքին։ Մյուս դաշտերի փոփոխությունը, կատարելը կամ ջնջելը վերաբերում են միայն այս առաջադրանքին։ Անջատելիս ապագա նախատեսված կրկնությունները կհեռացվեն, իսկ այս առաջադրանքն ու պատմությունը կմնան։</p>}
+          {repeat && <p className="muted">Հաջորդ շաբաթների համար ստեղծվում են առանձին առաջադրանքներ՝ նույն անվանումով, ժամով և նշումով։ Եթե օրվա երեք գլխավորներն արդեն ընտրված են, կրկնությունը կավելացվի սովորական ցանկում։</p>}
         </section>
         <section className="form-card">
           <label className="top-toggle">
