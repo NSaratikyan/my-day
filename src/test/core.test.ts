@@ -163,7 +163,7 @@ describe("Տվյալների ամբողջականություն", () => {
     await expect(
       importData({ ...backup, tasks: [sample({ title: "" })] }, d),
     ).rejects.toThrow();
-    await expect(importData({ ...backup, version: 2 }, d)).rejects.toThrow();
+    await expect(importData({ ...backup, version: 3 }, d)).rejects.toThrow();
     expect(await d.tasks.count()).toBe(1);
   });
   it("մերժում է կրկնվող id-ներն ու չորս գլխավորները", async () => {
