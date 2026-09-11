@@ -1235,3 +1235,5 @@ input[type="radio"] {
     animation: none !important;
   }
 }
+.repeat-setting { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-block: 12px; border-bottom: 1px solid var(--border); }
+.repeat-setting strong { flex: 1 1 140px; overflow-wrap: anywhere; }

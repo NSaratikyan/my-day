@@ -2,15 +2,18 @@ import Dexie, { type Table } from "dexie";
 import { config } from "./config";
 import {
   backupSchema,
+  addDays, localDate, repeatEnd, seriesSchema, weeklyDates,
   topThreeConflicts,
   validateTask,
   type Category,
   type Task,
   type DailyNote,
   type Theme,
+  type TaskSeries, type RepeatOptions,
 } from "./model";
 export class PlannerDB extends Dexie {
   tasks!: Table<Task>;
+  series!: Table<TaskSeries>;
   categories!: Table<Category>;
   notes!: Table<DailyNote>;
   settings!: Table<{ key: string; value: string }>;
@@ -21,6 +24,10 @@ export class PlannerDB extends Dexie {
       categories: "id",
       notes: "id,&date",
       settings: "key",
+    });
+    this.version(2).stores({
+      tasks: "id,date,categoryId,status,seriesId",
+      series: "id",
     });
   }
 }
@@ -62,6 +69,75 @@ export async function initialize(database = db) {
       }
     },
   );
+  await ensureRepeats(addDays(localDate(), 366), database);
+}
+export async function ensureRepeats(through = addDays(localDate(), 366), database = db) {
+  await database.transaction("rw", [database.tasks, database.series], async () => {
+    const tasks = await database.tasks.toArray();
+    const present = new Set(tasks.filter(t => t.seriesId).map(t => `${t.seriesId}/${t.occurrenceDate}`));
+    const tops = new Map<string, number>();
+    for (const t of tasks) if (t.isTopThree) tops.set(t.date, (tops.get(t.date) ?? 0) + 1);
+    const now = new Date().toISOString();
+    const generated: Task[] = [];
+    for (const series of await database.series.toArray()) {
+      for (const date of weeklyDates(series, through)) {
+        const key = `${series.id}/${date}`;
+        if (present.has(key)) continue;
+        const isTopThree = series.template.isTopThree && (tops.get(date) ?? 0) < 3;
+        if (isTopThree) tops.set(date, (tops.get(date) ?? 0) + 1);
+        generated.push({ ...series.template, id: `repeat:${series.id}:${date}`, date, seriesId: series.id,
+          occurrenceDate: date, status: "planned", postponedCount: 0, isTopThree,
+          completedAt: undefined, previousStatus: undefined, createdAt: now, updatedAt: now });
+        present.add(key);
+      }
+    }
+    await database.tasks.bulkPut(generated);
+  });
+}
+export async function saveRepeatingTask(task: Task, options: RepeatOptions | undefined, replaceId?: string, database = db) {
+  await database.transaction("rw", [database.tasks, database.categories, database.series], async () => {
+    const old = task.seriesId ? await database.series.get(task.seriesId) : undefined;
+    if (task.seriesId && !old) throw new Error("Կրկնության շարքը չի գտնվել։");
+    let series: TaskSeries | undefined = old;
+    if (options) {
+      const template = { ...task };
+      delete template.seriesId;
+      delete template.occurrenceDate;
+      series = { id: old?.id ?? crypto.randomUUID(), startDate: old?.startDate ?? task.date,
+        enabled: true, options, template: old?.template ?? template, skipped: old?.skipped ?? [] };
+      if (!seriesSchema.safeParse(series).success)
+        throw new Error("Ստուգեք կրկնության քանակը կամ ավարտի ամսաթիվը։");
+      task = { ...task, seriesId: series.id, occurrenceDate: task.occurrenceDate ?? task.date };
+    } else if (old) series = { ...old, enabled: false };
+    await saveTask(task, replaceId, database);
+    if (series) {
+      await database.series.put(series);
+      const end = repeatEnd(series.startDate, series.options);
+      // Preserve past history, completed/in-progress occurrences, and the edited occurrence.
+      const future = await database.tasks.where("seriesId").equals(series.id).toArray();
+      await database.tasks.bulkDelete(future.filter(t => t.id !== task.id && t.date > localDate() && t.status === "planned" &&
+        (!series.enabled || (end && t.occurrenceDate! > end))).map(t => t.id));
+      await ensureRepeats(addDays(localDate() > task.date ? localDate() : task.date, 366), database);
+    }
+  });
+}
+export async function deleteTask(task: Task, database = db) {
+  await database.transaction("rw", [database.tasks, database.series], async () => {
+    if (task.seriesId && task.occurrenceDate) {
+      const series = await database.series.get(task.seriesId);
+      if (series) await database.series.update(series.id, { skipped: [...new Set([...series.skipped, task.occurrenceDate])] });
+    }
+    await database.tasks.delete(task.id);
+  });
+}
+export async function setSeriesEnabled(id: string, enabled: boolean, database = db) {
+  await database.transaction("rw", [database.tasks, database.series], async () => {
+    await database.series.update(id, { enabled });
+    if (!enabled) {
+      const future = await database.tasks.where("seriesId").equals(id).toArray();
+      await database.tasks.bulkDelete(future.filter(t => t.date > localDate() && t.status === "planned").map(t => t.id));
+    } else await ensureRepeats(undefined, database);
+  });
 }
 export async function saveTask(task: Task, replaceId?: string, database = db) {
   await database.transaction(
@@ -108,10 +184,11 @@ export async function saveNote(
 export async function exportData(database = db) {
   return database.transaction(
     "r",
-    [database.tasks, database.categories, database.notes, database.settings],
+    [database.tasks, database.categories, database.notes, database.settings, database.series],
     async () =>
       backupSchema.parse({
-        version: 1,
+        version: 2,
+        series: await database.series.toArray(),
         exportedAt: new Date().toISOString(),
         tasks: await database.tasks.toArray(),
         categories: await database.categories.toArray(),
@@ -129,25 +206,29 @@ export async function importData(input: unknown, database = db) {
   const data = result.data;
   await database.transaction(
     "rw",
-    [database.tasks, database.categories, database.notes, database.settings],
+    [database.tasks, database.categories, database.notes, database.settings, database.series],
     async () => {
       await database.tasks.clear();
       await database.categories.clear();
       await database.notes.clear();
+      await database.series.clear();
+      await database.series.bulkPut(data.series ?? []);
       await database.tasks.bulkPut(data.tasks);
       await database.categories.bulkPut(data.categories);
       await database.notes.bulkPut(data.notes);
       await database.settings.put({ key: "theme", value: data.theme });
       await database.settings.put({ key: "initialized", value: "1" });
+      await ensureRepeats(undefined, database);
     },
   );
 }
 export async function clearData() {
   await db.transaction(
     "rw",
-    [db.tasks, db.notes, db.categories, db.settings],
+    [db.tasks, db.notes, db.categories, db.settings, db.series],
     async () => {
       await db.tasks.clear();
+      await db.series.clear();
       await db.notes.clear();
       await db.categories.clear();
       await db.settings.clear();
@@ -160,10 +241,11 @@ export async function clearData() {
   );
 }
 export async function deleteCategory(id: string, replacement?: string) {
-  await db.transaction("rw", [db.tasks, db.categories], async () => {
+  await db.transaction("rw", [db.tasks, db.categories, db.series], async () => {
     if ((await db.categories.count()) <= 1)
       throw new Error("Պահեք առնվազն մեկ կատեգորիա։");
-    const used = await db.tasks.where("categoryId").equals(id).count();
+    const recurring = (await db.series.toArray()).filter(s => s.template.categoryId === id);
+    const used = (await db.tasks.where("categoryId").equals(id).count()) + recurring.length;
     if (
       used &&
       (!replacement ||
@@ -180,6 +262,7 @@ export async function deleteCategory(id: string, replacement?: string) {
           updatedAt: new Date().toISOString(),
         });
     await db.categories.delete(id);
+    for (const s of recurring) await db.series.put({ ...s, template: { ...s.template, categoryId: replacement! } });
   });
 }
 export async function setTheme(theme: Theme) {

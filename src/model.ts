@@ -16,6 +16,8 @@ export const priorities = {
 export type TaskStatus = keyof typeof statuses;
 export type TaskPriority = keyof typeof priorities;
 export interface Task {
+  seriesId?: string;
+  occurrenceDate?: string;
   id: string;
   title: string;
   categoryId: string;
@@ -141,6 +143,8 @@ const timestamp = z.string().datetime();
 const id = z.string().min(1).max(200);
 export const taskSchema = z
   .object({
+    seriesId: id.optional(),
+    occurrenceDate: dateSchema.optional(),
     id,
     title: z
       .string()
@@ -196,9 +200,52 @@ const noteSchema = z
     updatedAt: timestamp,
   })
   .strict();
+export const repeatOptionsSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("forever") }).strict(),
+  z.object({ mode: z.literal("weeks"), count: z.number().int().min(1).max(520) }).strict(),
+  z.object({ mode: z.literal("months"), count: z.number().int().min(1).max(120) }).strict(),
+  z.object({ mode: z.literal("until"), until: dateSchema }).strict(),
+]);
+export type RepeatOptions = z.infer<typeof repeatOptionsSchema>;
+export const seriesSchema = z.object({
+  id, startDate: dateSchema, enabled: z.boolean(),
+  options: repeatOptionsSchema, template: taskSchema,
+  skipped: z.array(dateSchema).max(50000),
+}).strict().superRefine((s, ctx) => {
+  if (s.options.mode === "until" && s.options.until < s.startDate)
+    ctx.addIssue({ code: "custom", message: "Ավարտը չի կարող լինել սկզբից առաջ։" });
+  if (s.template.seriesId || s.template.occurrenceDate)
+    ctx.addIssue({ code: "custom", message: "Սխալ կրկնության ձևանմուշ։" });
+});
+export type TaskSeries = Omit<z.infer<typeof seriesSchema>, "template"> & { template: Task };
+export function repeatEnd(start: string, options: RepeatOptions): string | undefined {
+  if (options.mode === "forever") return undefined;
+  if (options.mode === "until") return options.until;
+  if (options.mode === "weeks") return addDays(start, (options.count - 1) * 7);
+  const date = parseDate(start);
+  const day = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + options.count);
+  const last = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(day, last));
+  return addDays(localDate(date), -1);
+}
+export function weeklyDates(series: TaskSeries, through: string): string[] {
+  if (!series.enabled) return [];
+  const end = repeatEnd(series.startDate, series.options);
+  const limit = end && end < through ? end : through;
+  const skipped = new Set(series.skipped);
+  const dates: string[] = [];
+  for (let date = series.startDate; date <= limit; date = addDays(date, 7)) {
+    if (dates.length >= 50000) throw new Error("Կրկնության ժամանակահատվածը չափազանց երկար է։");
+    if (!skipped.has(date)) dates.push(date);
+  }
+  return dates;
+}
 export const backupSchema = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
+    series: z.array(seriesSchema).max(1000).optional(),
     exportedAt: timestamp,
     tasks: z.array(taskSchema).max(50000),
     categories: z.array(categorySchema).min(1).max(1000),
@@ -207,7 +254,25 @@ export const backupSchema = z
   })
   .strict()
   .superRefine((data, ctx) => {
+    if ((data.version === 2 && !data.series) || (data.version === 1 && data.series))
+      ctx.addIssue({ code: "custom", message: "Սխալ պահուստային տարբերակ։" });
+    const series = data.series ?? [];
+    const seriesIds = new Set(series.map((s) => s.id));
+    if (seriesIds.size !== series.length)
+      ctx.addIssue({ code: "custom", message: "Կրկնվող շարքեր։" });
+    const occurrenceKeys = new Set<string>();
+    for (const task of data.tasks) {
+      if (!!task.seriesId !== !!task.occurrenceDate || (task.seriesId && !seriesIds.has(task.seriesId)))
+        ctx.addIssue({ code: "custom", message: "Կրկնության շարքը չի գտնվել։" });
+      if (task.seriesId) {
+        const key = `${task.seriesId}/${task.occurrenceDate}`;
+        if (occurrenceKeys.has(key)) ctx.addIssue({ code: "custom", message: "Կրկնվող առաջադրանք։" });
+        occurrenceKeys.add(key);
+      }
+    }
     const ids = new Set(data.categories.map((c) => c.id));
+    for (const s of series) if (!ids.has(s.template.categoryId))
+      ctx.addIssue({ code: "custom", message: "Կրկնության կատեգորիան չի գտնվել։" });
     const unique = (a: string[]) => new Set(a).size === a.length;
     if (
       !unique(data.tasks.map((t) => t.id)) ||

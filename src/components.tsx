@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { db, saveTask } from "./db";
+import { deleteTask, saveTask } from "./db";
 import { useData } from "./context";
 import {
   addDays,
@@ -185,7 +185,7 @@ export function TaskCard({ task }: { task: Task }) {
       name === "delete" &&
       confirm("Ջնջե՞լ այս առաջադրանքը։ Այն վերականգնել հնարավոր չի լինի։")
     )
-      await run(() => db.tasks.delete(task.id), "Առաջադրանքը ջնջված է։");
+      await run(() => deleteTask(task), "Առաջադրանքը ջնջված է։");
   }
   return (
     <article
@@ -208,6 +208,7 @@ export function TaskCard({ task }: { task: Task }) {
         onClick={() => navigate(`/task/${task.id}`)}
       >
         <span className="task-title">{task.title}</span>
+        {task.seriesId && <span className="status-label">Շաբաթական կրկնություն</span>}
         <span className="task-meta">
           <span className="category" style={{ borderColor: category?.color }}>
             {category?.name}
