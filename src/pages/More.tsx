@@ -20,12 +20,13 @@ import {
   exportData,
   importData,
   setTheme,
+  setSeriesEnabled,
 } from "../db";
 import { useData } from "../context";
 import { backupSchema, localDate, type Category, type Theme } from "../model";
 import { InstallHelp } from "../pwa";
 export function More() {
-  const { categories, run, notify, tasks } = useData();
+  const { categories, series, run, notify, tasks } = useData();
   const theme = useLiveQuery(() => db.settings.get("theme"));
   const [editing, setEditing] = useState<Category | null>(null);
   const [name, setName] = useState("");
@@ -183,7 +184,7 @@ export function More() {
               Հեռացնե՞լ «{categories.find((c) => c.id === removing)?.name}»
               կատեգորիան։
             </p>
-            {tasks.some((t) => t.categoryId === removing) && (
+            {(tasks.some((t) => t.categoryId === removing) || series.some(s => s.template.categoryId === removing)) && (
               <label>
                 Ընտրեք փոխարինող կատեգորիա
                 <select
@@ -326,7 +327,20 @@ export function More() {
           Փակ հավելվածի ֆոնային ծանուցումները այս տարբերակում երաշխավորված չեն։
         </p>
       </section>
-      <InstallHelp />
+        <InstallHelp />
+        <section className="settings-card">
+          <h2>Կրկնվող առաջադրանքներ</h2>
+          <p>Անջատելիս ապագա նախատեսված կրկնությունները կհեռացվեն։ Անցած օրերն ու կատարված առաջադրանքները կմնան։</p>
+          {!series.length && <p>Դեռ կրկնություններ չկան։ Դրանք կարող եք կարգավորել առաջադրանք ավելացնելիս։</p>}
+          {series.map(s => <div key={s.id} className="repeat-setting">
+            <strong>{s.template.title}</strong>
+            <span>{s.enabled ? "Միացված է" : "Անջատված է"}</span>
+            <button className="secondary" onClick={() => void run(() => setSeriesEnabled(s.id, !s.enabled), s.enabled ? "Կրկնությունն անջատված է։" : "Կրկնությունը միացված է։")}>
+              {s.enabled ? "Անջատել" : "Միացնել"}
+              <span className="sr-only">՝ {s.template.title}</span>
+            </button>
+          </div>)}
+        </section>
       <section className="settings-card danger-zone">
         <h2>Մաքրել տվյալները</h2>
         <p>

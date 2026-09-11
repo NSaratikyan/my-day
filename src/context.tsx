@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "./db";
-import type { Task, Category } from "./model";
+import { db, ensureRepeats } from "./db";
+import type { Task, Category, TaskSeries } from "./model";
 type Data = {
   tasks: Task[];
+  series: TaskSeries[];
   categories: Category[];
   notify: (message: string) => void;
   run: (action: () => Promise<unknown>, message?: string) => Promise<boolean>;
@@ -12,8 +13,15 @@ const Context = createContext<Data | null>(null);
 export function DataProvider({ children }: { children: ReactNode }) {
   const tasks = useLiveQuery(() => db.tasks.toArray());
   const categories = useLiveQuery(() => db.categories.toArray());
+  const series = useLiveQuery(() => db.series.toArray());
   const [toast, setToast] = useState("");
   const [timer, setTimer] = useState<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    const refresh = () => { void ensureRepeats().catch(() => setToast("Չհաջողվեց բեռնել կրկնվող առաջադրանքները։ Փորձեք կրկին բացել հավելվածը։")); };
+    const interval = setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    return () => { clearInterval(interval); window.removeEventListener("focus", refresh); };
+  }, []);
   function notify(message: string) {
     clearTimeout(timer);
     setToast(message);
@@ -31,14 +39,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return false;
     }
   }
-  if (!tasks || !categories)
+  if (!tasks || !categories || !series)
     return (
       <main className="loading" role="status">
         Բեռնվում է…
       </main>
     );
   return (
-    <Context.Provider value={{ tasks, categories, notify, run }}>
+    <Context.Provider value={{ tasks, categories, series, notify, run }}>
       {children}
       {toast && (
         <div className="toast" role="status">

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { ensureRepeats } from "../db";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useData } from "../context";
@@ -15,6 +16,10 @@ export function Week({ today }: { today: string }) {
   const { tasks } = useData();
   const [selected, setSelected] = useState(today);
   const start = monday(selected);
+  const [repeatError, setRepeatError] = useState("");
+  useEffect(() => {
+    void ensureRepeats(addDays(start, 6)).then(() => setRepeatError(""), () => setRepeatError("Չհաջողվեց բեռնել կրկնվող առաջադրանքները։"));
+  }, [start]);
   const dates = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const week = tasks.filter((t) => dates.includes(t.date));
   const day = tasks
@@ -22,6 +27,7 @@ export function Week({ today }: { today: string }) {
     .sort((a, b) => (a.startTime ?? "99").localeCompare(b.startTime ?? "99"));
   return (
     <>
+      {repeatError && <p role="alert" className="error">{repeatError}</p>}
       <header className="page-heading">
         <div>
           <p className="overline">ՄԵԿ ՇԱԲԱԹ, ՓՈՔՐ ՔԱՅԼԵՐ</p>
