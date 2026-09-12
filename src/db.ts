@@ -2,6 +2,7 @@ import Dexie, { type Table } from "dexie";
 import { config } from "./config";
 import {
   backupSchema,
+  birthdaySchema,
   addDays, localDate, repeatEnd, seriesSchema, weeklyDates,
   topThreeConflicts,
   validateTask,
@@ -194,6 +195,7 @@ export async function exportData(database = db) {
         categories: await database.categories.toArray(),
         notes: await database.notes.toArray(),
         theme: (await database.settings.get("theme"))?.value ?? "system",
+        birthday: (await database.settings.get("birthday"))?.value,
       }),
   );
 }
@@ -217,6 +219,8 @@ export async function importData(input: unknown, database = db) {
       await database.categories.bulkPut(data.categories);
       await database.notes.bulkPut(data.notes);
       await database.settings.put({ key: "theme", value: data.theme });
+      if (data.birthday) await database.settings.put({ key: "birthday", value: data.birthday });
+      else await database.settings.delete("birthday");
       await database.settings.put({ key: "initialized", value: "1" });
       await ensureRepeats(undefined, database);
     },
@@ -267,4 +271,13 @@ export async function deleteCategory(id: string, replacement?: string) {
 }
 export async function setTheme(theme: Theme) {
   await db.settings.put({ key: "theme", value: theme });
+}
+export async function saveBirthday(value: string, database = db) {
+  if (!value) {
+    await database.settings.delete("birthday");
+    return;
+  }
+  if (!birthdaySchema.safeParse(value).success)
+    throw new Error("Ընտրեք վավեր ծննդյան ամսաթիվ՝ ոչ ուշ, քան այսօր։");
+  await database.settings.put({ key: "birthday", value });
 }
