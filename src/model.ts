@@ -138,7 +138,8 @@ export function isOverdue(task: Task, now = new Date()) {
 const dateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((s) => localDate(parseDate(s)) === s);
+    .refine((s) => localDate(parseDate(s)) === s);
+export const birthdaySchema = dateSchema.refine(s => s <= localDate(), "Ծննդյան ամսաթիվը չի կարող ապագայում լինել։");
 const timestamp = z.string().datetime();
 const id = z.string().min(1).max(200);
 export const taskSchema = z
@@ -251,6 +252,7 @@ export const backupSchema = z
     categories: z.array(categorySchema).min(1).max(1000),
     notes: z.array(noteSchema).max(50000),
     theme: z.enum(["system", "light", "dark"]),
+    birthday: birthdaySchema.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {

@@ -1,4 +1,23 @@
 @charset "UTF-8";
+.horoscope-card {
+  padding: 20px;
+  margin-bottom: 22px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--soft);
+  line-height: 1.65;
+}
+.horoscope-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.horoscope-heading > svg { color: var(--primary); flex-shrink: 0; }
+.horoscope-heading h2 { flex: 1; min-width: 0; }
+.horoscope-card small { display: block; color: var(--muted); font-size: .75rem; margin-top: 14px; }
+.horoscope-focus { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: .85rem; }
+.horoscope-card .secondary { display: inline-flex; margin-top: 12px; }
+.birthday-settings form { display: grid; gap: 12px; }
+.birthday-settings input { width: 100%; min-width: 0; }
+.birthday-settings .button-row { flex-wrap: wrap; }
+.birthday-settings .button-row button { white-space: normal; max-width: 100%; }
+.birthday-sign { background: var(--soft); padding: 12px; border-radius: 12px; }
 :root {
   font-family: Arial, "Noto Sans Armenian", sans-serif;
   color: #172522;
