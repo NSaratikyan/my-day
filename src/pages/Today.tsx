@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useData } from "../context";
 import { formatDate, isOverdue, type Task } from "../model";
 import { Empty, Progress, TaskSection } from "../components";
+import { Horoscope } from "../Horoscope";
 export function Today({ today, now }: { today: string; now: Date }) {
   const { tasks } = useData();
   const day = tasks.filter((t) => t.date === today);
@@ -32,6 +33,7 @@ export function Today({ today, now }: { today: string; now: Date }) {
           <Sun size={27} />
         </span>
       </header>
+      <Horoscope today={today} />
       <Progress tasks={day} />
       <TaskSection title="Օրվա 3 գլխավորը" tasks={top.sort(sort)} top />
       {day.length === 0 && <Empty />}

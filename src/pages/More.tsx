@@ -25,6 +25,7 @@ import {
 import { useData } from "../context";
 import { backupSchema, localDate, type Category, type Theme } from "../model";
 import { InstallHelp } from "../pwa";
+import { BirthdaySettings } from "../Horoscope";
 export function More() {
   const { categories, series, run, notify, tasks } = useData();
   const theme = useLiveQuery(() => db.settings.get("theme"));
@@ -120,6 +121,7 @@ export function More() {
           <p className="subtitle">Փոքր կարգավորումներ՝ հարմար օրվա համար։</p>
         </div>
       </header>
+      <BirthdaySettings />
       <section className="settings-card">
         <h2>
           <Palette size={20} />
