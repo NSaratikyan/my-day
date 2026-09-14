@@ -162,7 +162,7 @@ export const taskSchema = z
     priority: z.enum(["low", "medium", "high"]),
     isTopThree: z.boolean(),
     reminderMinutes: z
-      .union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)])
+      .union([z.literal(0), z.literal(5), z.literal(15), z.literal(30), z.literal(60)])
       .optional(),
     notes: z.string().max(10000).optional(),
     status: z.enum([
@@ -305,6 +305,6 @@ export function validateTask(
   if (!dateSchema.safeParse(task.date).success) return "Ընտրեք վավեր ամսաթիվ։";
   if (!taskSchema.safeParse(task).success)
     return "Ստուգեք ժամը, տևողությունը և դաշտերի արժեքները։";
-  if (task.reminderMinutes && !task.startTime)
+  if (task.reminderMinutes !== undefined && !task.startTime)
     return "Հիշեցման համար ընտրեք մեկնարկի ժամը։";
 }
