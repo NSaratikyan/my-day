@@ -264,12 +264,13 @@ export function TaskForm() {
           <label>
             Հիշեցում
             <select
-              value={task.reminderMinutes ?? 0}
+                value={task.reminderMinutes ?? "off"}
               onChange={(e) =>
-                field("reminderMinutes", Number(e.target.value) || undefined)
+                  field("reminderMinutes", e.target.value === "off" ? undefined : Number(e.target.value))
               }
             >
-              <option value="0">Անջատված</option>
+                <option value="off">Անջատված</option>
+                <option value="0">Մեկնարկի պահին</option>
               {[5, 15, 30, 60].map((n) => (
                 <option key={n} value={n}>
                   {n} րոպե առաջ

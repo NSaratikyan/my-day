@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Bell,
@@ -26,6 +26,7 @@ import { useData } from "../context";
 import { backupSchema, localDate, type Category, type Theme } from "../model";
 import { InstallHelp } from "../pwa";
 import { BirthdaySettings } from "../Horoscope";
+import { notificationPermission, showNotification } from "../reminders";
 export function More() {
   const { categories, series, run, notify, tasks } = useData();
   const theme = useLiveQuery(() => db.settings.get("theme"));
@@ -35,9 +36,14 @@ export function More() {
   const [removing, setRemoving] = useState("");
   const [replacement, setReplacement] = useState("");
   const [busy, setBusy] = useState(false);
-  const [permission, setPermission] = useState(
-    "Notification" in window ? Notification.permission : "unsupported",
-  );
+  const [permission, setPermission] = useState(notificationPermission);
+  const [testingNotification, setTestingNotification] = useState(false);
+  useEffect(() => {
+    const refresh = () => setPermission(notificationPermission());
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, []);
   async function categorySubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
@@ -304,10 +310,12 @@ export function More() {
         </p>
         <button
           className="secondary"
-          disabled={permission === "unsupported" || permission === "granted"}
+          disabled={permission === "unsupported" || permission === "granted" || permission === "denied"}
           onClick={async () => {
             try {
-              setPermission(await Notification.requestPermission());
+              const next = await Notification.requestPermission();
+              setPermission(next);
+              if (next !== "granted") notify("Թույլտվությունը չի տրվել։ Հիշեցումները կերևան միայն բաց հավելվածի ներսում։");
             } catch {
               notify("Այս դիտարկիչը չի թույլատրում ծանուցումները։");
             }
@@ -317,8 +325,14 @@ export function More() {
             ? "Ծանուցումները թույլատրված են"
             : permission === "unsupported"
               ? "Ծանուցումները չեն աջակցվում"
-              : "Միացնել ծանուցումները"}
+              : permission === "denied" ? "Ծանուցումներն արգելափակված են" : "Միացնել ծանուցումները"}
         </button>
+        <button className="secondary" disabled={permission !== "granted" || testingNotification} onClick={async () => {
+          setTestingNotification(true);
+          setPermission(notificationPermission());
+          await run(() => showNotification("Սա փորձնական հիշեցում է «Իմ օրը» հավելվածից։", "im-ory-test"), "Ծանուցումը փոխանցված է համակարգին։ Եթե այն չեք տեսնում, ստուգեք հեռախոսի ծանուցումների և «Չանհանգստացնել» կարգավորումները։");
+          setTestingNotification(false);
+        }}>{testingNotification ? "Ուղարկվում է…" : "Փորձնական ծանուցում"}</button>
         {permission === "denied" && (
           <p className="muted">
             Թույլտվությունը փակված է։ Այն կարող եք փոխել դիտարկիչի
@@ -326,8 +340,9 @@ export function More() {
           </p>
         )}
         <p className="muted">
-          Փակ հավելվածի ֆոնային ծանուցումները այս տարբերակում երաշխավորված չեն։
+          Հիշեցումը միացրեք նաև առաջադրանքի ձևում՝ «Մեկնարկի պահին» կամ նախապես։ Միայն ժամը լրացնելը հիշեցում չի միացնում։
         </p>
+        <p className="muted">Փակ հավելվածում կամ արգելափակված հեռախոսում այս տարբերակը չի կարող ժամանակին գործարկել հիշեցումը։ Դրա համար անհրաժեշտ է առանձին push ծառայություն։ iPhone-ում ծանուցումները միացրեք գլխավոր էկրանին տեղադրված հավելվածից։</p>
       </section>
         <InstallHelp />
         <section className="settings-card">

@@ -1,6 +1,6 @@
 export const config = {
   name: "Իմ օրը",
-  version: "1.2.0",
+  version: "1.2.1",
   database: "im-ory",
   githubPages: {
     repository: "NSaratikyan/my-day",

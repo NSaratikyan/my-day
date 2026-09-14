@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { Bell, Download, WifiOff } from "lucide-react";
 import { useData } from "./context";
-import { config } from "./config";
-import type { Task } from "./model";
+import { deliverReminder, notificationPermission, reminderDue, reminderKey as key } from "./reminders";
 interface InstallEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: string }>;
@@ -115,84 +114,26 @@ export function InstallHelp() {
     </section>
   );
 }
-export interface ReminderDelivery {
-  send: (task: Task) => Promise<void>;
-}
-export const browserDelivery: ReminderDelivery = {
-  async send(task) {
-    if ("Notification" in window && Notification.permission === "granted") {
-      const registration = await navigator.serviceWorker?.getRegistration();
-      if (registration)
-        await registration.showNotification(config.name, {
-          body: `${task.startTime} · ${task.title}`,
-          tag: `task-${task.id}`,
-          icon: `${import.meta.env.BASE_URL}icon-192.png`,
-        });
-      else new Notification(config.name, { body: task.title, tag: task.id });
-    }
-  },
-};
 export function Reminders({ now }: { now: Date }) {
   const { tasks } = useData();
   const [dismissed, setDismissed] = useState<string[]>([]);
-  const due = tasks.filter((t) => {
-    if (
-      !t.reminderMinutes ||
-      !t.startTime ||
-      ["completed", "cancelled"].includes(t.status)
-    )
-      return false;
-    const start = new Date(`${t.date}T${t.startTime}:00`).getTime();
-    return (
-      now.getTime() >= start - t.reminderMinutes * 60000 &&
-      now.getTime() < start + 60000
-    );
-  });
-  const key = (t: Task) =>
-    `${t.id}-${t.date}-${t.startTime}-${t.reminderMinutes}`;
+  const [deliveryError, setDeliveryError] = useState(false);
+  const due = tasks.filter(t => reminderDue(t, now));
   useEffect(() => {
-    for (const t of tasks) {
-      if (
-        !t.startTime ||
-        !t.reminderMinutes ||
-        ["completed", "cancelled"].includes(t.status)
-      )
-        continue;
-      const start = new Date(`${t.date}T${t.startTime}:00`).getTime();
-      const k = key(t);
-      if (
-        now.getTime() >= start - t.reminderMinutes * 60000 &&
-        now.getTime() < start + 60000 &&
-        sessionStorage.getItem(k) !== "sent" &&
-        "Notification" in window &&
-        Notification.permission === "granted"
-      ) {
-        sessionStorage.setItem(k, "sent");
-        void browserDelivery.send(t).catch(() => sessionStorage.removeItem(k));
-      }
+    if (notificationPermission() !== "granted") return;
+    for (const task of tasks.filter(t => reminderDue(t, now))) {
+      void deliverReminder(task).catch(() => setDeliveryError(true));
     }
   }, [tasks, now]);
-  return (
-    <>
-      {due
-        .filter((t) => !dismissed.includes(key(t)))
-        .map((t) => (
-          <div className="reminder" role="status" key={key(t)}>
-            <Bell size={20} />
-            <span>
-              <strong>Մոտենում է առաջադրանքը</strong>
-              <br />
-              {t.startTime} · {t.title}
-            </span>
-            <button
-              className="icon"
-              aria-label="Փակել հիշեցումը"
-              onClick={() => setDismissed((d) => [...d, key(t)])}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-    </>
-  );
+  return <>
+    {deliveryError && <div className="warning" role="alert">
+      Չհաջողվեց ուղարկել համակարգային ծանուցումը։ «Ավելին» բաժնում ստուգեք փորձնական ծանուցումը։
+      <button onClick={() => setDeliveryError(false)} aria-label="Փակել ծանուցման սխալը">×</button>
+    </div>}
+    {due.filter(t => !dismissed.includes(key(t))).map(t => <div className="reminder" role="status" key={key(t)}>
+      <Bell size={20} />
+      <span><strong>{now.getTime() >= new Date(`${t.date}T${t.startTime}:00`).getTime() ? "Առաջադրանքի ժամն է" : "Մոտենում է առաջադրանքը"}</strong><br />{t.startTime} · {t.title}</span>
+      <button className="icon" aria-label="Փակել հիշեցումը" onClick={() => setDismissed(d => [...d, key(t)])}>×</button>
+    </div>)}
+  </>;
 }
